@@ -4,7 +4,7 @@ library(foreach)
 # Calculate the number of cores
 getDoParWorkers()                                          
 detectCores()                                                      
-cl=makeCluster(5)                                              
+cl=makeCluster(10)                                              
 registerDoParallel(cl)                                                                          
 getDoParWorkers()   
 
@@ -13,23 +13,20 @@ myfunc = function(m)
 {
   options(warn=-1)
   library(geepack);library(MASS);library(ResourceSelection);library(ltmle); library(SuperLearner)
-  library(dplyr); library(nleqslv)
+  library(dplyr)
   library(data.table)
+  library(nleqslv)
   #library(reshape2)  #do not use for data frame only
+  setDTthreads(1)
   
   logit <- function(term) {
     return( ifelse(!is.na(term),log(term/(1-term)),NA) )
-  }
-  
-  EXPIT <- function(term) {
-    return( ifelse(!is.na(term),exp(term)/(1+exp(term)),NA) )
   }
   
   source("datagen.R")
   set.seed(1129)
   seeds = floor(runif(1000)*10^8);
   set.seed(seeds[m])
-  setDTthreads(1)
   
   n <- 1000
   K <- 4
@@ -284,23 +281,37 @@ myfunc = function(m)
   tmpdata$pi2 = tmpdata$pi1*tmpdata$weight2
   tmpdata$pi3 = tmpdata$pi2*tmpdata$weight3
   
+  tmp = tmpdata[tmpdata$A_0==tmpdata$Q_0 & tmpdata$A_1==tmpdata$Q_1 &  
+                  tmpdata$A_2==tmpdata$Q_2 &  tmpdata$A_3==tmpdata$Q_3,]; 
+  tmpcount=0
+  tmpcount = ifelse(any(tmp$pi0<0.00001,na.rm=T),1,tmpcount)
+  tmpcount = ifelse(any(tmp$pi1<0.00001,na.rm=T),1,tmpcount)
+  tmpcount = ifelse(any(tmp$pi2<0.00001,na.rm=T),1,tmpcount)
+  tmpcount = ifelse(any(tmp$pi3<0.00001,na.rm=T),1,tmpcount)
+  
+  tmpdata$pi0 = ifelse(tmpdata$pi0<0.00001, 0.00001, tmpdata$pi0)
+  tmpdata$pi1 = ifelse(tmpdata$pi1<0.00001, 0.00001, tmpdata$pi1)
+  tmpdata$pi2 = ifelse(tmpdata$pi2<0.00001, 0.00001, tmpdata$pi2)
+  tmpdata$pi3 = ifelse(tmpdata$pi3<0.00001, 0.00001, tmpdata$pi3)
+  
+  
   ##################
   ######time 3######
   ##################
   y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0 & tmpdata$A_1==tmpdata$Q_1 &  
                   tmpdata$A_2==tmpdata$Q_2 &  tmpdata$A_3==tmpdata$Q_3,]; 
-  y4fit = glm(Y_4 ~ L1_3 + L2_3 + L1_3*L2_3 + Q_3 + L2_3*Q_3 + L1_2 + L2_2 + L1_2*L2_2 + Q_2 + L2_2*Q_2 + L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1 + L1_0 + L2_0 + L1_0*L2_0, weight=1/pi3, family = binomial(), data = y4dat) ; 
+  y4fit = glm(Y_4 ~ L1_3 + L2_3 + L1_3*L2_3 + Q_3 + L2_3*Q_3, weight=1/pi3, family = binomial(), data = y4dat) ; 
   y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0 & tmpdata$A_1==tmpdata$Q_1 &  
                   tmpdata$A_2==tmpdata$Q_2,]; 
   y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
   y4dat$y4pred = ifelse(y4dat$Y_3==0,0,y4dat$y4pred); 
   
-  y4fit = glm(y4pred ~ L1_2 + L2_2 + L1_2*L2_2 + Q_2 + L2_2*Q_2 + L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1 + L1_0 + L2_0 + L1_0*L2_0, weight=1/pi2, family = binomial(), data = y4dat) ; 
+  y4fit = glm(y4pred ~ L1_2 + L2_2 + L1_2*L2_2 + Q_2 + L2_2*Q_2, weight=1/pi2, family = binomial(), data = y4dat) ; 
   y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0 & tmpdata$A_1==tmpdata$Q_1,]; 
   y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
   y4dat$y4pred = ifelse(y4dat$Y_2==0,0,y4dat$y4pred); 
   
-  y4fit = glm(y4pred ~ L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1 + L1_0 + L2_0 + L1_0*L2_0, weight=1/pi1, family = binomial(), data = y4dat) ;
+  y4fit = glm(y4pred ~ L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1, weight=1/pi1, family = binomial(), data = y4dat) ; 
   y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0,]; 
   y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
   y4dat$y4pred = ifelse(y4dat$Y_1==0,0,y4dat$y4pred); 
@@ -314,13 +325,16 @@ myfunc = function(m)
   meany4 = (meany4tmp)
   #meany4
   
-  myparam = cbind(meany4)
+  tmpcount2 = 0
+  tmpcount2 = tmpcount2 + sum(is.na(tmp$meanytmp))
+  
+  myparam = c(meany4, tmpcount,tmpcount2)
   
   return(myparam)
 }
 test = foreach(m=1:1000) %dopar% myfunc(m)
 test2 = do.call("rbind", test)
 
-write.csv(test2,"MR_fullphi_opt.csv")
+write.csv(test2,"WICE.csv")
 
 stopCluster(cl)

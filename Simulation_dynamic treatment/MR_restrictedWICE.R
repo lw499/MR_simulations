@@ -16,7 +16,6 @@ myfunc = function(m)
   library(dplyr)
   library(data.table)
   #library(reshape2)  #do not use for data frame only
-  setDTthreads(1)
   
   logit <- function(term) {
     return( ifelse(!is.na(term),log(term/(1-term)),NA) )
@@ -30,6 +29,7 @@ myfunc = function(m)
   set.seed(1129)
   seeds = floor(runif(1000)*10^8);
   set.seed(seeds[m])
+  setDTthreads(1)
   
   n <- 1000
   K <- 4
@@ -46,14 +46,24 @@ myfunc = function(m)
   })
   
   dffull <- rbindlist(df)
-  dffullwide = dcast(dffull, id ~ t0, value.var = c("L1","L2","A","C","Y","Q"))
+  
+  dffull[, paste("lag_A") := shift(A, 1, NA, type='lag'), by=id]
+  dffull$lag_A = ifelse(dffull$t0==0,0,dffull$lag_A)
+  
+  afit = glm(A ~ L1 + L2 + L1*L2, family = binomial(), data = dffull[dffull$lag_A==0,]) #This is from the data generation mechanism
+  
+  dffull$pred_obs = predict(afit, newdata = dffull, type="response")
+  dffull$pred_obs = ifelse(dffull$A==1, dffull$pred_obs, 1-dffull$pred_obs)
+  dffull$pred_obs = ifelse(!is.na(dffull$lag_A) & dffull$lag_A==1, 1, dffull$pred_obs)
+  
+  dffullwide = dcast(dffull, id ~ t0, value.var = c("L1","L2","A","C","Y","pred_obs","Q"))
   
   tmpdata = dffullwide
   #subset data
   tmpdata$Y_1 = ifelse(tmpdata$Y_0==0,0,tmpdata$Y_1)
   tmpdata$Y_2 = ifelse(!is.na(tmpdata$Y_1) & tmpdata$Y_1==0,0,tmpdata$Y_2)
   tmpdata$Y_3 = ifelse(!is.na(tmpdata$Y_2) & tmpdata$Y_2==0,0,tmpdata$Y_3)
-
+  
   tmpdata$Y_4 = tmpdata$Y_3
   tmpdata$Y_3 = tmpdata$Y_2
   tmpdata$Y_2 = tmpdata$Y_1
@@ -61,35 +71,43 @@ myfunc = function(m)
   
   tmpdata$C_3 = tmpdata$C_2 = tmpdata$C_1 = tmpdata$C_0 = tmpdata$Y_0 = NULL
   
+  tmpdata$id = seq(1,n,by=1)
+  tmpdata$pi3 <- tmpdata$pi2 <- tmpdata$pi1 <- tmpdata$pi0 <- NA
+  
+  tmpdata$pi0 = tmpdata$pred_obs_0
+  tmpdata$pi1 = tmpdata$pi0*tmpdata$pred_obs_1
+  tmpdata$pi2 = tmpdata$pi1*tmpdata$pred_obs_2
+  tmpdata$pi3 = tmpdata$pi2*tmpdata$pred_obs_3
+  
   ##################
   ######time 3######
   ##################
   y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0 & tmpdata$A_1==tmpdata$Q_1 &  
                   tmpdata$A_2==tmpdata$Q_2 &  tmpdata$A_3==tmpdata$Q_3,]; 
-  y4fit = glm(Y_4 ~ L1_3 + L2_3 + L1_3*L2_3 + Q_3 + L2_3*Q_3, family = binomial(), data = y4dat) ; 
+  y4fit = glm(Y_4 ~ L1_3 + L2_3 + L1_3*L2_3 + Q_3 + L2_3*Q_3 + L1_2 + L2_2 + L1_2*L2_2 + Q_2 + L2_2*Q_2 + L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1 + L1_0 + L2_0 + L1_0*L2_0, weight=1/pi3, family = binomial(), data = y4dat) ; 
   y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0 & tmpdata$A_1==tmpdata$Q_1 &  
                   tmpdata$A_2==tmpdata$Q_2,]; 
   y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
   y4dat$y4pred = ifelse(y4dat$Y_3==0,0,y4dat$y4pred); 
   
-  y4fit = glm(y4pred ~ L1_2 + L2_2 + L1_2*L2_2 + Q_2 + L2_2*Q_2, family = binomial(), data = y4dat) ; 
+  y4fit = glm(y4pred ~ L1_2 + L2_2 + L1_2*L2_2 + Q_2 + L2_2*Q_2 + L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1 + L1_0 + L2_0 + L1_0*L2_0, weight=1/pi2, family = binomial(), data = y4dat) ; 
   y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0 & tmpdata$A_1==tmpdata$Q_1,]; 
   y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
   y4dat$y4pred = ifelse(y4dat$Y_2==0,0,y4dat$y4pred); 
   
-  y4fit = glm(y4pred ~ L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1, family = binomial(), data = y4dat) ; 
+  y4fit = glm(y4pred ~ L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1 + L1_0 + L2_0 + L1_0*L2_0, weight=1/pi1, family = binomial(), data = y4dat) ;
   y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0,]; 
   y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
   y4dat$y4pred = ifelse(y4dat$Y_1==0,0,y4dat$y4pred); 
   
-  y4fit = glm(y4pred ~ L1_0 + L2_0 + L1_0*L2_0, family = binomial(), data = y4dat) ; 
+  y4fit = glm(y4pred ~ L1_0 + L2_0 + L1_0*L2_0, weight=1/pi0, family = binomial(), data = y4dat) ; 
   y4dat = tmpdata; 
   y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
   
   meany4tmp = c(mean(y4dat$y4pred))
   
   meany4 = (meany4tmp)
-  meany4
+  #meany4
   
   myparam = cbind(meany4)
   
@@ -98,6 +116,6 @@ myfunc = function(m)
 test = foreach(m=1:1000) %dopar% myfunc(m)
 test2 = do.call("rbind", test)
 
-write.csv(test2,"seq_reg_strat.csv")
+write.csv(test2,"MR_restrictWICE.csv")
 
 stopCluster(cl)

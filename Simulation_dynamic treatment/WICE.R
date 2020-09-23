@@ -117,6 +117,6 @@ myfunc = function(m)
 test = foreach(m=1:1000) %dopar% myfunc(m)
 test2 = do.call("rbind", test)
 
-write.csv(test2,"DR.csv")
+write.csv(test2,"WICE.csv")
 
 stopCluster(cl)

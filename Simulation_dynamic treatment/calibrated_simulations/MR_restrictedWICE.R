@@ -13,20 +13,23 @@ myfunc = function(m)
 {
   options(warn=-1)
   library(geepack);library(MASS);library(ResourceSelection);library(ltmle); library(SuperLearner)
-  library(dplyr)
+  library(dplyr); library(nleqslv)
   library(data.table)
-  library(nleqslv)
   #library(reshape2)  #do not use for data frame only
-  setDTthreads(1)
   
   logit <- function(term) {
     return( ifelse(!is.na(term),log(term/(1-term)),NA) )
   }
- 
+  
+  EXPIT <- function(term) {
+    return( ifelse(!is.na(term),exp(term)/(1+exp(term)),NA) )
+  }
+  
   source("datagen.R")
   set.seed(1129)
   seeds = floor(runif(1000)*10^8);
   set.seed(seeds[m])
+  setDTthreads(1)
   
   n <- 1000
   K <- 4
@@ -123,6 +126,7 @@ myfunc = function(m)
     ####Split data
     mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0,];
     dat_obs = as.matrix(cbind("const" = rep(1, nrow(mydat)), mydat[,c("y4pred0")]));
+    dat_obs[,1] = dat_obs[,1]/mydat$pred_obs_0; dat_obs[,2] = dat_obs[,2]/mydat$pred_obs_0
     tmp = rowSums(as.data.frame( t(t(dat_obs) * MyVector)) ) + mydat$h0;  tmp2 = sapply(tmp,function(x) (exp(-x) ));
     
     dat_obs = as.data.frame(cbind("const" = rep(1, nrow(mydat)), mydat[,c("y4pred0")]))
@@ -149,6 +153,7 @@ myfunc = function(m)
   
   ### predict ###
   tmpdatweight =as.matrix(cbind("const" = rep(1, nrow(mytmpdat)), mytmpdat[,c("y4pred0")]));
+  tmpdatweight[,1] = tmpdatweight[,1]/mytmpdat$pred_obs_0; tmpdatweight[,2] = tmpdatweight[,2]/mytmpdat$pred_obs_0
   tmp = rowSums(as.data.frame( t(t(tmpdatweight) * param0)) )  + mytmpdat$h0;  
   mytmpdat$weight0 = sapply(tmp,function(x) (plogis(x) ));
   
@@ -156,8 +161,9 @@ myfunc = function(m)
   model=function(beta){ 
     MyVector = c(beta)
     ####Split data
-    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1,]; 
+    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$Q_0==0 & mytmpdat$A_1==mytmpdat$Q_1,]; 
     dat_obs = as.matrix(cbind("const" = rep(1, nrow(mydat)), mydat[,c("y4pred1")]));
+    dat_obs[,1] = dat_obs[,1]/(mydat$pred_obs_0*mydat$pred_obs_1); dat_obs[,2] = dat_obs[,2]/(mydat$pred_obs_0*mydat$pred_obs_1)
     tmp = rowSums(as.data.frame( t(t(dat_obs) * MyVector)) ) + mydat$h1;  tmp2 = sapply(tmp,function(x) (exp(-x) ));
     
     dat_obs = cbind("const" = rep(1, nrow(mydat)),  mydat[,c("y4pred1","weight0")])
@@ -168,7 +174,7 @@ myfunc = function(m)
     U_obs = colSums(dat_obs)
     
     ####A3=0
-    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1!=mytmpdat$Q_1,]; 
+    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$Q_0==0 & mytmpdat$A_1!=mytmpdat$Q_1,]; 
     dat_miss = cbind("const" = rep(1, nrow(mydat)),  mydat[,c("y4pred1","weight0")])
     dat_miss$term2 = (dat_miss$weight0)^-1
     dat_miss$const = dat_miss$const*dat_miss$term2; dat_miss$y4pred1 = dat_miss$y4pred1*dat_miss$term2
@@ -184,9 +190,10 @@ myfunc = function(m)
   
   ### predict ###
   tmpdatweight =as.matrix(cbind("const" = rep(1, nrow(mytmpdat)), mytmpdat[,c("y4pred1")]));
+  tmpdatweight[,1] = tmpdatweight[,1]/(mytmpdat$pred_obs_0*mytmpdat$pred_obs_1); tmpdatweight[,2] = tmpdatweight[,2]/(mytmpdat$pred_obs_0*mytmpdat$pred_obs_1)
   tmp = rowSums(as.data.frame( t(t(tmpdatweight) * param1)) ) + mytmpdat$h1;  
   mytmpdat$weight1 = sapply(tmp,function(x) (plogis(x) ));
-  #mytmpdat$weight1 = ifelse(mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_0==1, 1, mytmpdat$weight1)
+  mytmpdat$weight1 = ifelse(mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_0==1, 1, mytmpdat$weight1)
   
   
   
@@ -194,8 +201,9 @@ myfunc = function(m)
   model=function(beta){ 
     MyVector = c(beta)
     ####Split data
-    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_2==mytmpdat$Q_2,]; 
+    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$Q_1==0 & mytmpdat$A_2==mytmpdat$Q_2,]; 
     dat_obs = as.matrix(cbind("const" = rep(1, nrow(mydat)), mydat[,c("y4pred2")]));
+    dat_obs[,1] = dat_obs[,1]/(mydat$pred_obs_0*mydat$pred_obs_1*mydat$pred_obs_2); dat_obs[,2] = dat_obs[,2]/(mydat$pred_obs_0*mydat$pred_obs_1*mydat$pred_obs_2)
     tmp = rowSums(as.data.frame( t(t(dat_obs) * MyVector)) ) + mydat$h2;  tmp2 = sapply(tmp,function(x) (exp(-x) ));
     
     dat_obs = cbind("const" = rep(1, nrow(mydat)),  mydat[,c("y4pred2","weight0","weight1")])
@@ -206,7 +214,7 @@ myfunc = function(m)
     U_obs = colSums(dat_obs)
     
     ####A3=0
-    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_2!=mytmpdat$Q_2,]; 
+    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$Q_1==0 & mytmpdat$A_2!=mytmpdat$Q_2,]; 
     dat_miss = cbind("const" = rep(1, nrow(mydat)),  mydat[,c("y4pred2","weight0","weight1")])
     dat_miss$term2 = (dat_miss$weight0*dat_miss$weight1)^-1
     dat_miss$const = dat_miss$const*dat_miss$term2; dat_miss$y4pred2 = dat_miss$y4pred2*dat_miss$term2
@@ -223,17 +231,19 @@ myfunc = function(m)
   
   ### predict ###
   tmpdatweight =as.matrix(cbind("const" = rep(1, nrow(mytmpdat)), mytmpdat[,c("y4pred2")]));
+  tmpdatweight[,1] = tmpdatweight[,1]/(mytmpdat$pred_obs_0*mytmpdat$pred_obs_1*mytmpdat$pred_obs_2); tmpdatweight[,2] = tmpdatweight[,2]/(mytmpdat$pred_obs_0*mytmpdat$pred_obs_1*mytmpdat$pred_obs_2)
   tmp = rowSums(as.data.frame( t(t(tmpdatweight) * param2)) ) + mytmpdat$h2;  
   mytmpdat$weight2 = sapply(tmp,function(x) (plogis(x) ))
-  #mytmpdat$weight2 = ifelse(mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_1==1, 1, mytmpdat$weight2)
+  mytmpdat$weight2 = ifelse(mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_1==1, 1, mytmpdat$weight2)
   
   
   ### repeat ###
   model=function(beta){ 
     MyVector = c(beta)
     ####Split data
-    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_2==mytmpdat$Q_2 & mytmpdat$A_3==mytmpdat$Q_3,]; 
+    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_2==mytmpdat$Q_2 & mytmpdat$Q_2==0 & mytmpdat$A_3==mytmpdat$Q_3,]; 
     dat_obs = as.matrix(cbind("const" = rep(1, nrow(mydat)), mydat[,c("y4pred3")]));
+    dat_obs[,1] = dat_obs[,1]/(mydat$pred_obs_0*mydat$pred_obs_1*mydat$pred_obs_2*mydat$pred_obs_3); dat_obs[,2] = dat_obs[,2]/(mydat$pred_obs_0*mydat$pred_obs_1*mydat$pred_obs_2*mydat$pred_obs_3)
     tmp = rowSums(as.data.frame( t(t(dat_obs) * MyVector)) ) + mydat$h3;  tmp2 = sapply(tmp,function(x) (exp(-x) ));
     
     dat_obs = cbind("const" = rep(1, nrow(mydat)),  mydat[,c("y4pred3","weight0","weight1","weight2")])
@@ -243,7 +253,7 @@ myfunc = function(m)
     U_obs = colSums(dat_obs)
     
     ####A3=0
-    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_2==mytmpdat$Q_2 & mytmpdat$A_3!=mytmpdat$Q_3,]; 
+    mydat = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_2==mytmpdat$Q_2 & mytmpdat$Q_2==0 & mytmpdat$A_3!=mytmpdat$Q_3,]; 
     dat_miss = cbind("const" = rep(1, nrow(mydat)),  mydat[,c("y4pred3","weight0","weight1","weight2")])
     dat_miss$term2 = (dat_miss$weight0*dat_miss$weight1*dat_miss$weight2)^-1
     dat_miss$const = dat_miss$const*dat_miss$term2; 
@@ -257,34 +267,60 @@ myfunc = function(m)
   mybeta = c(0,0)
   #mybeta = c(0.39475759, -0.03394329, -0.49487539)
   #mybeta = c(0.399148956, -0.010877327, -0.513587440)
-  #param3 = multiroot(model,mybeta)$root
   param3 = nleqslv(mybeta, model,control=list(allowSingular=FALSE))$x
   
   
   ### predict ###
   tmpdatweight =as.matrix(cbind("const" = rep(1, nrow(mytmpdat)), mytmpdat[,c("y4pred3")]));
+  tmpdatweight[,1] = tmpdatweight[,1]/(mytmpdat$pred_obs_0*mytmpdat$pred_obs_1*mytmpdat$pred_obs_2*mytmpdat$pred_obs_3); tmpdatweight[,2] = tmpdatweight[,2]/(mytmpdat$pred_obs_0*mytmpdat$pred_obs_1*mytmpdat$pred_obs_2*mytmpdat$pred_obs_3)
   tmp = rowSums(as.data.frame( t(t(tmpdatweight) * param3)) ) + mytmpdat$h3;  
   mytmpdat$weight3 = sapply(tmp,function(x) (plogis(x) ))
-  #mytmpdat$weight3 = ifelse(mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_2==mytmpdat$Q_2 & mytmpdat$A_2==1, 1, mytmpdat$weight3)
+  mytmpdat$weight3 = ifelse(mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_2==mytmpdat$Q_2 & mytmpdat$A_2==1, 1, mytmpdat$weight3)
   
-  ##FINAL
+  tmpdata = mytmpdat
   
-  obsdata = mytmpdat[mytmpdat$A_0==mytmpdat$Q_0 & mytmpdat$A_1==mytmpdat$Q_1 & mytmpdat$A_2==mytmpdat$Q_2 & mytmpdat$A_3==mytmpdat$Q_3,]
-  obsdata$meanytmp = obsdata$Y_4*(obsdata$weight0*obsdata$weight1*obsdata$weight2*obsdata$weight3)^-1
-  #sum(obsdata$meanytmp)/n
-  testfit = glm(obsdata$Y_4 ~ 1, weights = 1/(obsdata$weight0*obsdata$weight1*obsdata$weight2*obsdata$weight3))
+  tmpdata$pi0 = tmpdata$weight0
+  tmpdata$pi1 = tmpdata$pi0*tmpdata$weight1
+  tmpdata$pi2 = tmpdata$pi1*tmpdata$weight2
+  tmpdata$pi3 = tmpdata$pi2*tmpdata$weight3
   
-  tmpcount = 0
-  tmpcount = tmpcount + sum(is.na(obsdata$meanytmp))
-  paramcheck = any(param0*param1*param2*param3==0)
+  ##################
+  ######time 3######
+  ##################
+  y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0 & tmpdata$A_1==tmpdata$Q_1 &  
+                  tmpdata$A_2==tmpdata$Q_2 &  tmpdata$A_3==tmpdata$Q_3,]; 
+  y4fit = glm(Y_4 ~ L1_3 + L2_3 + L1_3*L2_3 + Q_3 + L2_3*Q_3 + L1_2 + L2_2 + L1_2*L2_2 + Q_2 + L2_2*Q_2 + L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1 + L1_0 + L2_0 + L1_0*L2_0, weight=1/pi3, family = binomial(), data = y4dat) ; 
+  y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0 & tmpdata$A_1==tmpdata$Q_1 &  
+                  tmpdata$A_2==tmpdata$Q_2,]; 
+  y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
+  y4dat$y4pred = ifelse(y4dat$Y_3==0,0,y4dat$y4pred); 
   
-  myparam = c(sum(obsdata$meanytmp, na.rm=T)/n, tmpcount, paramcheck)
+  y4fit = glm(y4pred ~ L1_2 + L2_2 + L1_2*L2_2 + Q_2 + L2_2*Q_2 + L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1 + L1_0 + L2_0 + L1_0*L2_0, weight=1/pi2, family = binomial(), data = y4dat) ; 
+  y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0 & tmpdata$A_1==tmpdata$Q_1,]; 
+  y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
+  y4dat$y4pred = ifelse(y4dat$Y_2==0,0,y4dat$y4pred); 
+  
+  y4fit = glm(y4pred ~ L1_1 + L2_1 + L1_1*L2_1 + Q_1 + L2_1*Q_1 + L1_0 + L2_0 + L1_0*L2_0, weight=1/pi1, family = binomial(), data = y4dat) ;
+  y4dat = tmpdata[tmpdata$A_0==tmpdata$Q_0,]; 
+  y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
+  y4dat$y4pred = ifelse(y4dat$Y_1==0,0,y4dat$y4pred); 
+  
+  y4fit = glm(y4pred ~ L1_0 + L2_0 + L1_0*L2_0, weight=1/pi0, family = binomial(), data = y4dat) ; 
+  y4dat = tmpdata; 
+  y4dat$y4pred = predict(y4fit, newdata = y4dat, type="response"); 
+  
+  meany4tmp = c(mean(y4dat$y4pred))
+  
+  meany4 = (meany4tmp)
+  #meany4
+  
+  myparam = cbind(meany4)
   
   return(myparam)
 }
 test = foreach(m=1:1000) %dopar% myfunc(m)
 test2 = do.call("rbind", test)
 
-write.csv(test2,"DR_BHT.csv")
+write.csv(test2,"MR_restrictwICE.csv")
 
 stopCluster(cl)
